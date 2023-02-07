@@ -1,12 +1,13 @@
 import dotenv from "dotenv";
 dotenv.config();
-import { buildUnixTime, parsePbStatement } from "./helper";
+import { buildUnixTime, parsePbStatement, parseMonoStatement } from "./helper";
 import axios from "axios";
 import { operations_create } from "src/models/finance/operations/create";
 import { AccountsEntityShort } from "src/models/finance/account/load";
 
 const file = `data/${process.env.XLS_FILE_NAME!}`;
-const pbData = parsePbStatement(file);
+const mode = process.env.MODE!;
+const bankData = mode === 'mono' ? parseMonoStatement(file) : parsePbStatement(file);
 const userId = Number.parseInt(process.env.TAXER_FOP_ID!);
 const account: AccountsEntityShort = {
   id: Number.parseInt(process.env.TAXER_BANK_ID || "0"),
@@ -22,27 +23,29 @@ const instance = axios.create({
 });
 
 (async () => {
-  for (let i = 0; i < pbData.length; i++) {
-    let x = pbData[i];
-    const data: operations_create = {
+  const data: operations_create = {
+    operations: bankData.map(x => ({
       userId,
       operation: {
         id: null,
         type: x.amount > 0 ? "FlowIncome" : "FlowOutgo",
         comment: x.purpose,
-        contents: [],
+        contents: null,
         timestamp: buildUnixTime(x),
-        payedSum: null,
+        parent: null,
+        payedSum: 0,
         financeType: "custom",
         account,
-        total: x.amount < 0 ? x.amount * -1 : x.amount,
+        total: Math.abs(x.amount),
+        contractorName: null,
+        exchangeDifference: null,
+        contractor: null,
       },
-    };
-    console.log(`${i} ${data.operation.comment}`);
-    const resp = await instance.post(
-      "/api/finances/operation/create?lang=ru",
-      data
-    );
-    console.log(resp.statusText);
-  }
+    })),
+  };
+  const resp = await instance.post(
+    "/api/finances/operation/create?lang=uk",
+    data
+  );
+  console.log(resp.statusText);
 })();
